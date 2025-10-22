@@ -39,7 +39,7 @@ with tab_sim:
         st.header("Time & Monte Carlo")
         horizon_years = st.slider("Horizon (years)", 1, 10, 3, 1)
         monthly_steps = horizon_years * 12
-        do_mc = st.checkbox("Enable Monte Carlo (N paths)", value=True)
+        do_mc = st.checkbox("Enable Monte Carlo (N paths)", value=False)
         mc_n = st.number_input("MC paths", min_value=50, max_value=2000, value=250, step=50)
 
     st.subheader("Company & Team")
