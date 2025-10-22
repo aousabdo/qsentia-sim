@@ -7,6 +7,24 @@ from finance.params import default_params
 from finance.sim import run_simulation, summarize_results, run_mc, sustainability_grid
 import plotly.express as px
 
+
+def _freeze_params(params: dict):
+    """Stable, hashable representation for caching keys."""
+    return tuple(sorted(params.items()))
+
+
+@st.cache_data(show_spinner=False)
+def _compute_sustainability_grid(params_key, aum_vals, hc_vals, n_paths, metric, be_months):
+    params = dict(params_key)
+    return sustainability_grid(
+        params,
+        list(aum_vals),
+        list(hc_vals),
+        n_paths=int(n_paths),
+        metric=metric,
+        be_months=int(be_months),
+    )
+
 st.set_page_config(page_title="QSentia Simulator", layout="wide")
 st.title("QSentia — Equity & Fund Economics Simulator")
 
@@ -154,7 +172,7 @@ with tab_map:
         with cC:
             metric = st.selectbox("Metric", ["No cash-out over horizon", "Break-even ≤ T months"])
             be_months = st.number_input("T (months for break-even)", 3, 60, 24, 1)
-            n_paths_grid = st.number_input("MC paths per cell", 50, 2000, 200, 50)
+            n_paths_grid = st.number_input("MC paths per cell", 50, 2000, 100, 25)
 
         if aum_max <= aum_min:
             st.error("AUM max must be greater than AUM min.")
@@ -172,36 +190,67 @@ with tab_map:
         hc_vals = spaced_int_levels(hc_min, hc_max, n_hc)
         metric_key = "no_cashout" if metric == "No cash-out over horizon" else "break_even"
 
-        Z = sustainability_grid(params, aum_vals, hc_vals,
-                                n_paths=int(n_paths_grid),
-                                metric=metric_key,
-                                be_months=int(be_months))
-
-        H, W = Z.shape
-        aum_vals_plot = aum_vals[:W]
-        hc_vals_plot = hc_vals[:H]
-
-        z_pct = 100.0 * Z
-        fig = px.imshow(
-            z_pct,
-            x=[f"${v/1_000_000:.0f}M" for v in aum_vals_plot],
-            y=[str(int(h)) for h in hc_vals_plot],
-            color_continuous_scale="Viridis",
-            origin="lower",
-            aspect="auto",
-            labels=dict(x="Seed Fund AUM", y="Headcount", color="Prob (%)"),
-            title=f"Sustainability: {metric} — Monte Carlo Probability"
+        grid_inputs = dict(
+            params_key=_freeze_params(params),
+            aum=tuple(aum_vals),
+            hc=tuple(hc_vals),
+            n_paths=int(n_paths_grid),
+            metric=metric_key,
+            be_months=int(be_months)
         )
-        fig.update_traces(hovertemplate="AUM=%{x}<br>HC=%{y}<br>P=%{z:.1f}%")
-        st.plotly_chart(fig, use_container_width=True)
 
-        i, j = divmod(int(np.nanargmax(Z)), W)
-        best_hc = hc_vals_plot[i]
-        best_aum = aum_vals_plot[j]
-        best_p = Z[i, j]
-        st.success(f"Best region: HC={best_hc}, AUM=${best_aum:,.0f} → P={best_p:.1%}")
-        st.caption(f"Grid used → AUM levels: {len(aum_vals_plot)} from ${aum_vals_plot[0]:,} to ${aum_vals_plot[-1]:,}; "
-                   f"HC levels: {len(hc_vals_plot)} from {hc_vals_plot[0]} to {hc_vals_plot[-1]}.")
+        stored_grid = st.session_state.get("sustainability_grid")
+        run_map = st.button("Run heatmap", key="run_heatmap")
+
+        if run_map:
+            with st.spinner("Running Monte Carlo grid…"):
+                Z = _compute_sustainability_grid(
+                    grid_inputs["params_key"],
+                    grid_inputs["aum"],
+                    grid_inputs["hc"],
+                    grid_inputs["n_paths"],
+                    grid_inputs["metric"],
+                    grid_inputs["be_months"],
+                )
+            st.session_state["sustainability_grid"] = {
+                "inputs": grid_inputs,
+                "matrix": Z,
+            }
+            stored_grid = st.session_state["sustainability_grid"]
+        elif stored_grid and stored_grid["inputs"] != grid_inputs:
+            st.info("Inputs changed — click 'Run heatmap' to recompute with the new settings.")
+
+        if stored_grid and stored_grid["inputs"] == grid_inputs:
+            Z = stored_grid["matrix"]
+            H, W = Z.shape
+            aum_vals_plot = aum_vals[:W]
+            hc_vals_plot = hc_vals[:H]
+
+            z_pct = 100.0 * Z
+            fig = px.imshow(
+                z_pct,
+                x=[f"${v/1_000_000:.0f}M" for v in aum_vals_plot],
+                y=[str(int(h)) for h in hc_vals_plot],
+                color_continuous_scale="Viridis",
+                origin="lower",
+                aspect="auto",
+                labels=dict(x="Seed Fund AUM", y="Headcount", color="Prob (%)"),
+                title=f"Sustainability: {metric} — Monte Carlo Probability"
+            )
+            fig.update_traces(hovertemplate="AUM=%{x}<br>HC=%{y}<br>P=%{z:.1f}%")
+            st.plotly_chart(fig, use_container_width=True)
+
+            i, j = divmod(int(np.nanargmax(Z)), W)
+            best_hc = hc_vals_plot[i]
+            best_aum = aum_vals_plot[j]
+            best_p = Z[i, j]
+            st.success(f"Best region: HC={best_hc}, AUM=${best_aum:,.0f} → P={best_p:.1%}")
+            st.caption(
+                f"Grid used → AUM levels: {len(aum_vals_plot)} from ${aum_vals_plot[0]:,} to ${aum_vals_plot[-1]:,}; "
+                f"HC levels: {len(hc_vals_plot)} from {hc_vals_plot[0]} to {hc_vals_plot[-1]}."
+            )
+        else:
+            st.caption("Adjust inputs and press 'Run heatmap' to generate the sustainability map.")
 
 # ---------------------------------------------------------------------------
 # ℹ️ ABOUT TAB
