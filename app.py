@@ -28,6 +28,8 @@ def _compute_sustainability_grid(params_key, aum_vals, hc_vals, n_paths, metric,
 st.set_page_config(page_title="QSentia Simulator", layout="wide")
 st.title("QSentia — Equity & Fund Economics Simulator")
 
+BASE_DEFAULTS = default_params()
+
 # Tabs
 tab_sim, tab_map, tab_about = st.tabs(["💹 Simulator", "🧭 Sustainability Map", "ℹ️ About"])
 
@@ -37,7 +39,8 @@ tab_sim, tab_map, tab_about = st.tabs(["💹 Simulator", "🧭 Sustainability Ma
 with tab_sim:
     with st.sidebar:
         st.header("Time & Monte Carlo")
-        horizon_years = st.slider("Horizon (years)", 1, 10, 3, 1)
+        default_horizon = int(BASE_DEFAULTS["monthly_steps"] / 12)
+        horizon_years = st.slider("Horizon (years)", 1, 10, default_horizon, 1)
         monthly_steps = horizon_years * 12
         do_mc = st.checkbox("Enable Monte Carlo (N paths)", value=False)
         mc_n = st.number_input("MC paths", min_value=50, max_value=2000, value=250, step=50)
@@ -49,21 +52,63 @@ with tab_sim:
         st.caption("Equity split (always sums to 100%)")
         auto_balance = st.toggle("Lock total to 100% (auto-balance)", value=True)
 
-        founders_equity = st.slider("Founders equity (%)", 0, 100, 60, 1)
-        employee_equity = st.slider("Employee pool (%)", 0, 100, 20, 1)
+        founders_equity = st.slider(
+            "Founders equity (%)",
+            0,
+            100,
+            int(BASE_DEFAULTS["founders_equity"] * 100),
+            1,
+        )
+        employee_equity = st.slider(
+            "Employee pool (%)",
+            0,
+            100,
+            int(BASE_DEFAULTS["employee_equity"] * 100),
+            1,
+        )
 
         if auto_balance:
             investor_equity = max(0, 100 - founders_equity - employee_equity)
             st.text_input("Investor equity (%)", value=str(investor_equity), disabled=True)
         else:
-            investor_equity = st.slider("Investor equity (%)", 0, 100, 20, 1)
+            investor_equity = st.slider(
+                "Investor equity (%)",
+                0,
+                100,
+                int(BASE_DEFAULTS["investor_equity"] * 100),
+                1,
+            )
 
     with col2:
-        headcount = st.slider("Initial headcount", 3, 15, 7)
-        avg_salary = st.number_input("Avg fully-loaded salary per FTE ($/yr)", 60_000, 600_000, 220_000, 10_000)
-        llm_cost = st.number_input("LLM/Data/API ($/mo)", 0, 50_000, 3_000, 100)
-        cloud_cost = st.number_input("Cloud/Infra ($/mo)", 0, 50_000, 1_500, 100)
-        other_opex = st.number_input("Other Opex ($/mo)", 0, 100_000, 2_000, 100)
+        headcount = st.slider("Initial headcount", 3, 15, int(BASE_DEFAULTS["headcount"]))
+        avg_salary = st.number_input(
+            "Avg fully-loaded salary per FTE ($/yr)",
+            60_000,
+            600_000,
+            int(BASE_DEFAULTS["avg_salary"]),
+            10_000,
+        )
+        llm_cost = st.number_input(
+            "LLM/Data/API ($/mo)",
+            0,
+            50_000,
+            int(BASE_DEFAULTS["llm_cost"]),
+            100,
+        )
+        cloud_cost = st.number_input(
+            "Cloud/Infra ($/mo)",
+            0,
+            50_000,
+            int(BASE_DEFAULTS["cloud_cost"]),
+            100,
+        )
+        other_opex = st.number_input(
+            "Other Opex ($/mo)",
+            0,
+            100_000,
+            int(BASE_DEFAULTS["other_opex"]),
+            100,
+        )
 
     if not auto_balance:
         total = founders_equity + employee_equity + investor_equity
@@ -74,30 +119,102 @@ with tab_sim:
     st.subheader("Fund Structure & Fees")
     col3, col4, col5 = st.columns(3)
     with col3:
-        equity_only_investors = st.checkbox("Equity-only investors (no share of carry/fees)", value=True)
-        mgmt_fee_pct = st.slider("Management fee (% of AUM/yr)", 0.0, 2.5, 1.0, 0.1)
-        carry_pct = st.slider("Performance fee / Carry (%)", 0.0, 30.0, 20.0, 1.0)
+        equity_only_investors = st.checkbox(
+            "Equity-only investors (no share of carry/fees)",
+            value=BASE_DEFAULTS["equity_only_investors"],
+        )
+        mgmt_fee_pct = st.slider(
+            "Management fee (% of AUM/yr)",
+            0.0,
+            5.0,
+            float(BASE_DEFAULTS["mgmt_fee_pct"] * 100),
+            0.1,
+        )
+        carry_pct = st.slider(
+            "Performance fee / Carry (%)",
+            0.0,
+            30.0,
+            float(BASE_DEFAULTS["carry_pct"] * 100),
+            1.0,
+        )
     with col4:
-        seed_company_cash = st.number_input("Seed into Company ($)", 0, 20_000_000, 1_000_000, 50_000)
-        seed_fund_aum = st.number_input("Seed Fund AUM ($)", 0, 50_000_000, 5_000_000, 100_000)
-        mgmt_fee_paid_monthly = st.checkbox("Collect management fee monthly", value=True)
-        carry_high_water_mark = st.checkbox("High-water mark on carry", value=True)
+        seed_company_cash = st.number_input(
+            "Seed into Company ($)",
+            0,
+            20_000_000,
+            int(BASE_DEFAULTS["seed_company_cash"]),
+            50_000,
+        )
+        seed_fund_aum = st.number_input(
+            "Seed Fund AUM ($)",
+            0,
+            50_000_000,
+            int(BASE_DEFAULTS["seed_fund_aum"]),
+            100_000,
+        )
+        mgmt_fee_paid_monthly = st.checkbox(
+            "Collect management fee monthly",
+            value=BASE_DEFAULTS["mgmt_fee_paid_monthly"],
+        )
+        carry_high_water_mark = st.checkbox(
+            "High-water mark on carry",
+            value=BASE_DEFAULTS["carry_high_water_mark"],
+        )
     with col5:
-        reinvest_carry = st.checkbox("Reinvest carry into company cash", value=True)
-        reinvest_mgmt_fee = st.checkbox("Reinvest mgmt fee into company cash", value=True)
-        hurdle_rate = st.number_input("Hurdle (annual %)", 0.0, 10.0, 0.0, 0.25)
+        reinvest_carry = st.checkbox(
+            "Reinvest carry into company cash",
+            value=BASE_DEFAULTS["reinvest_carry"],
+        )
+        reinvest_mgmt_fee = st.checkbox(
+            "Reinvest mgmt fee into company cash",
+            value=BASE_DEFAULTS["reinvest_mgmt_fee"],
+        )
+        hurdle_rate = st.number_input(
+            "Hurdle (annual %)",
+            0.0,
+            10.0,
+            float(BASE_DEFAULTS["hurdle_rate"] * 100),
+            0.25,
+        )
 
     st.subheader("Performance Assumptions")
     col6, col7 = st.columns(2)
     with col6:
-        target_ann_return = st.slider("Target annual return (%)", -20.0, 40.0, 15.0, 0.5)
-        target_ann_vol = st.slider("Annual volatility (%)", 5.0, 40.0, 12.0, 0.5)
+        target_ann_return = st.slider(
+            "Target annual return (%)",
+            -20.0,
+            40.0,
+            float(BASE_DEFAULTS["target_ann_return"] * 100),
+            0.5,
+        )
+        target_ann_vol = st.slider(
+            "Annual volatility (%)",
+            5.0,
+            40.0,
+            float(BASE_DEFAULTS["target_ann_vol"] * 100),
+            0.5,
+        )
     with col7:
-        rf_rate = st.slider("Risk-free (annual %)", 0.0, 5.0, 2.0, 0.1)
-        growth_new_aum = st.slider("Organic AUM growth (annual %)", 0.0, 50.0, 0.0, 1.0)
-        platform_take_on_ext_strats = st.checkbox("Add 2nd strategy Year 2 (+25% AUM)", value=False)
+        rf_rate = st.slider(
+            "Risk-free (annual %)",
+            0.0,
+            5.0,
+            float(BASE_DEFAULTS["rf_rate"] * 100),
+            0.1,
+        )
+        growth_new_aum = st.slider(
+            "Organic AUM growth (annual %)",
+            0.0,
+            50.0,
+            float(BASE_DEFAULTS["growth_new_aum"] * 100),
+            1.0,
+        )
+        platform_take_on_ext_strats = st.checkbox(
+            "Add 2nd strategy Year 2 (+25% AUM)",
+            value=BASE_DEFAULTS["platform_take_on_ext_strats"],
+        )
 
-    params = default_params()
+    params = dict(BASE_DEFAULTS)
     params.update(dict(
         monthly_steps=monthly_steps,
         founders_equity=founders_equity/100.0,
@@ -238,6 +355,10 @@ with tab_map:
                 title=f"Sustainability: {metric} — Monte Carlo Probability"
             )
             fig.update_traces(hovertemplate="AUM=%{x}<br>HC=%{y}<br>P=%{z:.1f}%")
+            fig.update_layout(
+                template="qsentia_investor",
+                coloraxis_colorbar=dict(title="Prob (%)", ticksuffix="%"),
+            )
             st.plotly_chart(fig, use_container_width=True)
 
             i, j = divmod(int(np.nanargmax(Z)), W)

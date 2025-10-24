@@ -3,6 +3,69 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
+from plotly.subplots import make_subplots
+
+
+# --- Plot styling -----------------------------------------------------------
+
+FONT_FAMILY = "Inter, Helvetica Neue, Arial, sans-serif"
+COLORWAY = [
+    "#1B3A4B",  # deep blue
+    "#1F7A8C",  # teal blue
+    "#BF1363",  # magenta accent
+    "#F18F01",  # amber highlight
+    "#6D9DC5",  # mid blue
+    "#C7DDEA",  # pale blue
+]
+PRIMARY = COLORWAY[0]
+SECONDARY = COLORWAY[1]
+ACCENT = COLORWAY[2]
+BAND_FILL = "rgba(31, 58, 75, 0.12)"
+CASH_BAND_FILL = "rgba(31, 122, 140, 0.16)"
+NEUTRAL_LINE = "#BEC5D1"
+GRID_COLOR = "#E5ECF6"
+
+_TEMPLATE = go.layout.Template(
+    layout=dict(
+        font=dict(family=FONT_FAMILY, size=14, color="#0F172A"),
+        title=dict(font=dict(family=FONT_FAMILY, size=22, color="#0F172A")),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        margin=dict(l=70, r=30, t=80, b=70),
+        colorway=COLORWAY,
+        hoverlabel=dict(bgcolor="#0F172A", font=dict(color="white", family=FONT_FAMILY, size=12)),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.25,
+            xanchor="left",
+            x=0,
+            bgcolor="rgba(255,255,255,0.0)",
+            font=dict(size=12)
+        ),
+        xaxis=dict(
+            showgrid=True,
+            gridcolor=GRID_COLOR,
+            zeroline=False,
+            linecolor=NEUTRAL_LINE,
+            linewidth=1,
+            mirror=False,
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor=GRID_COLOR,
+            zeroline=False,
+            linecolor=NEUTRAL_LINE,
+            linewidth=1,
+            mirror=False,
+        ),
+        bargap=0.25,
+    )
+)
+
+pio.templates["qsentia_investor"] = _TEMPLATE
+pio.templates.default = "qsentia_investor"
 
 def monthly_return_series(ann_mu, ann_vol, steps, seed=None):
     rng = np.random.default_rng(seed)
@@ -162,17 +225,89 @@ def summarize_results(df, p):
     })
 
     # Charts
-    fund_nav = px.line(df, y="fund_nav", title="Fund NAV")
-    aum_fee = go.Figure()
-    aum_fee.add_trace(go.Bar(x=df.index, y=df["mgmt_fees"], name="Mgmt Fees (monthly)"))
-    aum_fee.add_trace(go.Scatter(x=df.index, y=df["fund_aum"], mode="lines", name="AUM"))
-    aum_fee.update_layout(title="AUM & Management Fees")
+    fund_nav = px.line(
+        df,
+        y="fund_nav",
+        title="Fund NAV",
+        template="qsentia_investor",
+        color_discrete_sequence=[PRIMARY],
+    )
+    fund_nav.update_traces(line=dict(width=3, shape="spline"))
+    fund_nav.update_yaxes(tickprefix="$", separatethousands=True)
 
-    company_cash = px.line(df, y="company_cash", title="Company Cash")
+    aum_fee = make_subplots(specs=[[{"secondary_y": True}]])
+    aum_fee.add_trace(
+        go.Bar(
+            x=df.index,
+            y=df["mgmt_fees"],
+            name="Mgmt Fees (monthly)",
+            marker_color=SECONDARY,
+            opacity=0.85,
+            hovertemplate="%{x|%b %Y}<br>Mgmt Fees=$%{y:,.0f}<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+    aum_fee.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["fund_aum"],
+            name="Fund AUM",
+            mode="lines",
+            line=dict(color=PRIMARY, width=3),
+            hovertemplate="%{x|%b %Y}<br>AUM=$%{y:,.0f}<extra></extra>",
+        ),
+        secondary_y=True,
+    )
+    aum_fee.update_layout(title="AUM & Management Fees", template="qsentia_investor")
+    aum_fee.update_yaxes(
+        title_text="Mgmt Fees ($)",
+        tickprefix="$",
+        separatethousands=True,
+        secondary_y=False,
+    )
+    aum_fee.update_yaxes(
+        title_text="Fund AUM ($)",
+        tickprefix="$",
+        separatethousands=True,
+        secondary_y=True,
+    )
+
+    company_cash = px.line(
+        df,
+        y="company_cash",
+        title="Company Cash",
+        template="qsentia_investor",
+        color_discrete_sequence=[SECONDARY],
+    )
+    company_cash.update_traces(line=dict(width=3, shape="spline"))
+    company_cash.update_yaxes(tickprefix="$", separatethousands=True)
     runway_burn = go.Figure()
-    runway_burn.add_trace(go.Bar(x=df.index, y=df["company_inflow"], name="Inflow"))
-    runway_burn.add_trace(go.Bar(x=df.index, y=-df["monthly_burn"], name="Burn"))
-    runway_burn.update_layout(barmode="relative", title="Company Inflow vs Burn")
+    runway_burn.add_trace(
+        go.Bar(
+            x=df.index,
+            y=df["company_inflow"],
+            name="Inflow",
+            marker_color=SECONDARY,
+            customdata=df["company_inflow"],
+            hovertemplate="%{x|%b %Y}<br>Inflow=$%{customdata:,.0f}<extra></extra>",
+        )
+    )
+    runway_burn.add_trace(
+        go.Bar(
+            x=df.index,
+            y=-df["monthly_burn"],
+            name="Burn",
+            marker_color=ACCENT,
+            customdata=df["monthly_burn"],
+            hovertemplate="%{x|%b %Y}<br>Burn=$%{customdata:,.0f}<extra></extra>",
+        )
+    )
+    runway_burn.update_layout(
+        barmode="relative",
+        title="Company Inflow vs Burn",
+        template="qsentia_investor",
+    )
+    runway_burn.update_yaxes(tickprefix="$", separatethousands=True)
 
     charts = dict(
         fund_nav=fund_nav,
@@ -212,19 +347,83 @@ def run_mc(p, n_paths=250, seed=42):
     cc = pd.DataFrame({"date": idx, "P10": cs_lo, "P50": cs_md, "P90": cs_hi}).set_index("date")
 
     fund_nav_plot = go.Figure()
-    fund_nav_plot.add_trace(go.Scatter(x=fn.index, y=fn["P50"], name="NAV P50"))
-    fund_nav_plot.add_trace(go.Scatter(x=fn.index, y=fn["P90"], name="NAV P90", line=dict(dash="dot")))
-    fund_nav_plot.add_trace(go.Scatter(x=fn.index, y=fn["P10"], name="NAV P10", line=dict(dash="dot")))
-    fund_nav_plot.update_layout(title="Fund NAV — Monte Carlo (P10/P50/P90)")
+    fund_nav_plot.add_trace(
+        go.Scatter(
+            x=fn.index,
+            y=fn["P10"],
+            name="NAV P10",
+            line=dict(color=PRIMARY, width=0),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fund_nav_plot.add_trace(
+        go.Scatter(
+            x=fn.index,
+            y=fn["P90"],
+            name="NAV Range (P10-P90)",
+            line=dict(color=PRIMARY, width=0),
+            fill="tonexty",
+            fillcolor=BAND_FILL,
+            hovertemplate="%{x|%b %Y}<br>NAV Range=$%{y:,.0f} (P90)<extra></extra>",
+        )
+    )
+    fund_nav_plot.add_trace(
+        go.Scatter(
+            x=fn.index,
+            y=fn["P50"],
+            name="NAV Median",
+            line=dict(color=SECONDARY, width=3),
+            hovertemplate="%{x|%b %Y}<br>NAV Median=$%{y:,.0f}<extra></extra>",
+        )
+    )
+    fund_nav_plot.update_layout(title="Fund NAV — Monte Carlo")
+    fund_nav_plot.update_yaxes(tickprefix="$", separatethousands=True)
 
     company_cash_plot = go.Figure()
-    company_cash_plot.add_trace(go.Scatter(x=cc.index, y=cc["P50"], name="Cash P50"))
-    company_cash_plot.add_trace(go.Scatter(x=cc.index, y=cc["P90"], name="Cash P90", line=dict(dash="dot")))
-    company_cash_plot.add_trace(go.Scatter(x=cc.index, y=cc["P10"], name="Cash P10", line=dict(dash="dot")))
-    company_cash_plot.update_layout(title="Company Cash — Monte Carlo (P10/P50/P90)")
+    company_cash_plot.add_trace(
+        go.Scatter(
+            x=cc.index,
+            y=cc["P10"],
+            name="Cash P10",
+            line=dict(color=SECONDARY, width=0),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    company_cash_plot.add_trace(
+        go.Scatter(
+            x=cc.index,
+            y=cc["P90"],
+            name="Cash Range (P10-P90)",
+            line=dict(color=SECONDARY, width=0),
+            fill="tonexty",
+            fillcolor=CASH_BAND_FILL,
+            hovertemplate="%{x|%b %Y}<br>Cash Range=$%{y:,.0f} (P90)<extra></extra>",
+        )
+    )
+    company_cash_plot.add_trace(
+        go.Scatter(
+            x=cc.index,
+            y=cc["P50"],
+            name="Cash Median",
+            line=dict(color=ACCENT, width=3),
+            hovertemplate="%{x|%b %Y}<br>Cash Median=$%{y:,.0f}<extra></extra>",
+        )
+    )
+    company_cash_plot.update_layout(title="Company Cash — Monte Carlo")
+    company_cash_plot.update_yaxes(tickprefix="$", separatethousands=True)
 
     be_series = pd.Series(be_months, name="BreakEvenMonth")
-    break_even_hist = px.histogram(be_series.dropna(), nbins=20, title="Break-even Month Distribution")
+    break_even_hist = px.histogram(
+        be_series.dropna(),
+        nbins=20,
+        title="Break-even Month Distribution",
+        template="qsentia_investor",
+        color_discrete_sequence=[ACCENT],
+    )
+    break_even_hist.update_xaxes(title_text="Months to Break-even")
+    break_even_hist.update_yaxes(title_text="Frequency")
 
     summary = pd.DataFrame({
         "Metric": ["P(Break-even ≤ 12m)", "P(Break-even ≤ 24m)", "Median Break-even (m)"],
@@ -274,4 +473,3 @@ def sustainability_grid(p, aum_values, headcount_values, n_paths=250, metric="no
                 seed=seed + i * 10_000 + j
             )
     return probs
-
